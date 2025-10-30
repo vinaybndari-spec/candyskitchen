@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Candy's Kitchen — POS (Local) — No Staff</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{
+    --bg:#fff8f9;
+    --accent:#FF3B3B;
+    --accent-dark:#e03232;
+    --card:#fff;
+    --muted:#666;
+    --btn-text:#fff;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;font-family:Inter, Arial, sans-serif;-webkit-font-smoothing:antialiased;background:linear-gradient(180deg,#fff8f9 0%, #fff 100%);color:#222}
+  .center-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px}
+  .card{background:var(--card);border-radius:12px;padding:14px;box-shadow:0 12px 30px rgba(0,0,0,0.08);width:100%;max-width:720px}
+  h1,h2,h3{margin:0;color:var(--accent-dark)}
+  .muted{color:var(--muted);font-size:13px}
+  input,select,textarea{padding:10px;border-radius:8px;border:1px solid #eee;font-size:15px;width:100%;margin-top:8px}
+  button{border:none;padding:10px 12px;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer}
+  .btn{background:var(--accent);color:var(--btn-text)}
+  .btn.secondary{background:#f2f2f2;color:#111}
+  .row{display:flex;gap:8px;align-items:center}
+  .small{font-size:13px;color:var(--muted)}
+  .hidden{display:none}
+  .sheet{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top-left-radius:14px;border-top-right-radius:14px;box-shadow:0 -20px 50px rgba(0,0,0,0.12);z-index:999;max-height:85vh;overflow:auto;padding:12px;display:none}
+  .sheet.open{display:block}
+  .toast-wrap{position:fixed;left:12px;right:12px;top:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+  .toast{pointer-events:auto;background:#222;color:#fff;padding:10px 12px;border-radius:10px;font-weight:600;font-size:14px;box-shadow:0 6px 20px rgba(0,0,0,0.2)}
+  footer{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,0.95);padding:10px 12px;display:flex;gap:8px;align-items:center;justify-content:center;box-shadow:0 -6px 18px rgba(0,0,0,0.06);z-index:80}
+  .muted-block{font-size:13px;color:var(--muted);margin-top:6px}
+  .qr{width:160px;height:160px;border-radius:10px;overflow:hidden;background:#fff;display:flex;align-items:center;justify-content:center;border:1px dashed #eee}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:8px;border-bottom:1px solid #f5f5f5;font-size:14px;vertical-align:top}
+  .admin-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  @media (min-width:720px){.two-col{display:grid;grid-template-columns:1fr 360px;gap:12px}}
+</style>
+
+<!-- jsPDF for PDF generation -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+
+<div id="toastWrap" class="toast-wrap"></div>
+
+<!-- LOGIN CENTER -->
+<div id="loginScreen" class="center-screen">
+  <div class="card" role="dialog" aria-labelledby="welcomeTitle">
+    <h1 id="welcomeTitle">🍬 Candy's Kitchen</h1>
+    <div class="muted">Welcome — choose account type and log in.</div>
+
+    <div style="margin-top:12px">
+      <label class="small">Account type</label>
+      <select id="acctType" style="margin-top:6px" onchange="onAcctTypeChange()">
+        <option value="customer">Customer</option>
+        <option value="admin">Admin</option>
+      </select>
+
+      <div id="authPane" style="margin-top:10px">
+        <div id="loginTabs" style="display:flex;gap:8px;margin-top:6px">
+          <button class="btn secondary" id="tabUP" onclick="selectLoginTab('up')">Username / Password</button>
+          <button class="btn secondary" id="tabPhone" onclick="selectLoginTab('phone')">Phone + OTP</button>
+        </div>
+
+        <div id="loginUP" style="margin-top:8px">
+          <label class="small">Username</label>
+          <input id="loginUsername" placeholder="username or phone" />
+          <label class="small">Password</label>
+          <input id="loginPassword" type="password" placeholder="password" />
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn" onclick="doLoginUP()">Login</button>
+            <button class="btn secondary" onclick="showRegister()">Register</button>
+          </div>
+        </div>
+
+        <div id="loginPhone" class="hidden" style="margin-top:8px">
+          <label class="small">Phone (10 digits)</label>
+          <input id="loginPhoneInput" placeholder="e.g., 9876543210" />
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn" onclick="sendOtpUnified()">Send OTP</button>
+            <button class="btn secondary" onclick="showRegister()">Register</button>
+          </div>
+          <div id="otpAreaUnified" class="hidden" style="margin-top:8px">
+            <div class="small muted">Demo OTP: <strong id="demoOtpUnified"></strong></div>
+            <input id="otpInputUnified" placeholder="Enter OTP" style="margin-top:8px"/>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="btn" onclick="verifyOtpUnified()">Verify OTP</button>
+              <button class="btn secondary" onclick="hideOtpUnified()">Cancel</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div style="margin-top:12px" class="muted small">Admin default: <strong>admin / admin123</strong></div>
+  </div>
+</div>
+
+<!-- REGISTER SHEET -->
+<div id="registerSheet" class="sheet" role="dialog" aria-modal="true" aria-label="Register">
+  <h3>Create account</h3>
+  <div class="muted-block">Create customers only here. Admin accounts must be pre-created.</div>
+
+  <div style="margin-top:10px">
+    <label class="small">Account Type</label>
+    <select id="regRole" style="margin-top:6px">
+      <option value="customer">Customer</option>
+    </select>
+
+    <label class="small">Username</label>
+    <input id="regUser" placeholder="username (e.g., vinay123)" />
+
+    <label class="small">Password</label>
+    <input id="regPass" type="password" placeholder="password" />
+
+    <label class="small">Phone (optional)</label>
+    <input id="regPhone" placeholder="10-digit phone" />
+
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn" onclick="doRegister()">Create Account</button>
+      <button class="btn secondary" onclick="closeRegister()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" class="hidden" style="padding:12px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px">
+    <div>
+      <h2 style="margin:0">🍬 Candy's Kitchen</h2>
+      <div class="small muted" id="who">—</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn secondary" onclick="logoutUnified()">Logout</button>
+    </div>
+  </div>
+
+  <!-- Two-column layout -->
+  <div class="two-col">
+    <!-- Left: Menu & actions (Customer) -->
+    <div id="customerArea">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <h3 style="margin:0">Menu</h3>
+            <div class="small muted">Tap Choose & Add to set modifiers</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="searchApp" placeholder="Search..." oninput="renderMenuApp()" style="width:160px"/>
+            <select id="catFilterApp" onchange="renderMenuApp()"><option value="">All</option></select>
+          </div>
+        </div>
+
+        <div id="menuGridApp" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:12px"></div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <h4>Coupons</h4>
+        <div class="small muted">Available: <strong>NEW50</strong>, <strong>FESTIVE10</strong></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <input id="couponApp" placeholder="Enter coupon code"/>
+          <button class="btn" onclick="applyCouponApp()">Apply</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Cart & payment -->
+    <aside>
+      <div class="card">
+        <h3>Your Order</h3>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <input id="custNameApp" placeholder="Customer name (optional)"/>
+          <input id="tableNoApp" placeholder="Table / Address" style="width:120px"/>
+        </div>
+
+        <table style="margin-top:8px">
+          <thead><tr><th>Item</th><th>Qty</th><th class="right">Line</th><th></th></tr></thead>
+          <tbody id="cartBodyApp"><tr><td colspan="4" class="muted">Cart empty</td></tr></tbody>
+        </table>
+
+        <div id="priceBoxApp" class="small muted-block" style="margin-top:8px"></div>
+
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn" onclick="checkoutUnified('mock')">Pay (Mock)</button>
+          <button class="btn" onclick="openUpiAppApp()">Open UPI app</button>
+          <button class="btn secondary" onclick="applyExactPayApp()">Upload QR</button>
+          <button class="btn secondary" onclick="downloadPDFApp()">Download PDF</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <h4>QR / Scanner</h4>
+        <div class="qr" id="qrBoxApp">
+          <img id="uploadedQrApp" src="" style="max-width:100%;display:none"/>
+          <img id="genQrApp" src="" style="max-width:100%;display:block"/>
+        </div>
+        <div class="small muted" style="margin-top:8px">Upload QR (camera) or use generated UPI QR.</div>
+        <input id="qrUploaderApp" type="file" accept="image/*" capture="environment" style="margin-top:8px" onchange="onQrUploadApp(event)"/>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn" onclick="copyUpiApp()">Copy UPI</button>
+          <button class="btn secondary" onclick="clearCartApp()">Clear</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <div class="small muted">Token: <span id="tokenApp">—</span></div>
+        <div class="small muted">ETA: <span id="etaApp">—</span> mins</div>
+      </div>
+
+    </aside>
+  </div>
+
+  <!-- Admin area: ONLY these three options -->
+  <div id="adminArea" class="hidden" style="margin-top:12px">
+    <div class="card">
+      <h3>Admin Panel</h3>
+      <div class="muted small">Admin actions</div>
+      <div class="admin-actions">
+        <button class="btn" onclick="openAdminMenuEditor()">Update Menu</button>
+        <button class="btn" onclick="openAdminOrders()">Order History</button>
+        <button class="btn" onclick="openChangePassword()">Change Password</button>
+      </div>
+      <div id="adminStatsApp" class="muted-block" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <!-- Manage sheet (admin & modifiers) -->
+  <div id="manageSheet" class="sheet"></div>
+
+</div>
+
+<footer id="appFooter" class="hidden">
+  <button class="btn" onclick="showOrdersApp()">Orders</button>
+  <button class="btn" onclick="navToCart()">Open Cart</button>
+  <button class="btn secondary" onclick="exportAllHistoryApp()">Export</button>
+</footer>
+
+<script>
+/* =========================
+   Candy's Kitchen POS - LocalStorage (No Staff)
+   Admin default: admin / admin123
+   ========================= */
+
+/* Storage keys & defaults */
+const DEFAULT_UPI = '9392866782@ybl';
+const DEFAULT_GST = 5;
+
+function seedDefaults(){
+  if(!localStorage.getItem('ck_menu')){
+    const menu = [
+      { id:'idly', name:'Idly', price:30, img:'https://upload.wikimedia.org/wikipedia/commons/5/5b/Idli_Sambar.JPG', category:'Breakfast', modifiers:{spice:['Normal','Mild','Hot'], extras:[{name:'Extra Sambar',price:10},{name:'Chutney',price:5}] } },
+      { id:'dosa', name:'Dosa', price:50, img:'https://upload.wikimedia.org/wikipedia/commons/7/7c/Dosa_with_chutney_and_chutney.JPG', category:'Breakfast', modifiers:{spice:['Normal','Mild','Hot'], extras:[{name:'Cheese',price:20},{name:'Egg',price:15}] } },
+      { id:'vada', name:'Vada', price:40, img:'https://upload.wikimedia.org/wikipedia/commons/9/97/Vada_Sambar.JPG', category:'Snacks', modifiers:{spice:['Normal','Mild','Hot'], extras:[{name:'Extra Vada',price:40}] } },
+      { id:'tea', name:'Tea', price:15, img:'https://upload.wikimedia.org/wikipedia/commons/4/4b/Tea_cup.jpg', category:'Beverages', modifiers:{spice:[], extras:[{name:'Sugar free',price:0}] } },
+      { id:'coffee', name:'Coffee', price:25, img:'https://upload.wikimedia.org/wikipedia/commons/4/45/A_small_cup_of_coffee.JPG', category:'Beverages', modifiers:{spice:[], extras:[{name:'Milk extra',price:5}] } }
+    ];
+    localStorage.setItem('ck_menu', JSON.stringify(menu));
+  }
+  if(!localStorage.getItem('ck_users')){
+    const users = [
+      { username:'admin', password:'admin123', role:'admin', name:'Owner' }
+    ];
+    localStorage.setItem('ck_users', JSON.stringify(users));
+  }
+  if(!localStorage.getItem('ck_cart')) localStorage.setItem('ck_cart', JSON.stringify([]));
+  if(!localStorage.getItem('ck_history')) localStorage.setItem('ck_history', JSON.stringify([]));
+  if(!localStorage.getItem('ck_settings')) localStorage.setItem('ck_settings', JSON.stringify({ merchant:"Candy's Kitchen", upi:DEFAULT_UPI, gst: DEFAULT_GST }));
+  if(!localStorage.getItem('ck_token_counter')) localStorage.setItem('ck_token_counter','1000');
+}
+seedDefaults();
+
+/* helpers */
+const $ = id => document.getElementById(id);
+function toast(msg, t=2200){ const wrap = $('toastWrap'); const el = document.createElement('div'); el.className='toast'; el.innerText = msg; wrap.appendChild(el); setTimeout(()=>{ el.style.transition='all 260ms ease'; el.style.opacity='0'; el.style.transform='translateY(-12px)'; setTimeout(()=>wrap.removeChild(el),300); }, t); }
+function now(){ return new Date().toLocaleString('en-IN',{hour12:true}); }
+function uid(prefix='id'){ return prefix + '' + Date.now() + '' + Math.floor(Math.random()*999); }
+function getMenu(){ return JSON.parse(localStorage.getItem('ck_menu')||'[]'); }
+function setMenu(m){ localStorage.setItem('ck_menu', JSON.stringify(m)); renderMenuApp(); }
+function getUsers(){ return JSON.parse(localStorage.getItem('ck_users')||'[]'); }
+function setUsers(u){ localStorage.setItem('ck_users', JSON.stringify(u)); }
+function getCart(){ return JSON.parse(localStorage.getItem('ck_cart')||'[]'); }
+function setCart(c){ localStorage.setItem('ck_cart', JSON.stringify(c)); renderCartApp(); updateHeaderApp(); }
+function getHistory(){ return JSON.parse(localStorage.getItem('ck_history')||'[]'); }
+function setHistory(h){ localStorage.setItem('ck_history', JSON.stringify(h)); renderAdminStats(); }
+function getSettings(){ return JSON.parse(localStorage.getItem('ck_settings')||'{}'); }
+function setSettings(s){ localStorage.setItem('ck_settings', JSON.stringify(s)); updateHeaderApp(); }
+
+/* App state */
+let APP = { user: null, otp: null, loginTab: 'up' };
+let appliedCoupon = null;
+
+/* Initial UI */
+function showLoginScreen(){
+  $('loginScreen').style.display = 'flex';
+  $('app').classList.add('hidden');
+  $('appFooter').classList.add('hidden');
+  closeRegister();
+  selectLoginTab('up');
+  onAcctTypeChange();
+}
+showLoginScreen();
+
+/* Login UI */
+function onAcctTypeChange(){ /* no staff now; nothing special */ }
+function selectLoginTab(tab){ APP.loginTab = tab; if(tab==='up'){ $('loginUP').classList.remove('hidden'); $('loginPhone').classList.add('hidden'); } else { $('loginUP').classList.add('hidden'); $('loginPhone').classList.remove('hidden'); } }
+function doLoginUP(){
+  const username = $('loginUsername').value.trim();
+  const password = $('loginPassword').value;
+  if(!username || !password) return toast('Enter username & password');
+  const users = getUsers();
+  const u = users.find(x=> x.username === username && x.password === password);
+  if(!u) return toast('Invalid credentials');
+  APP.user = { username: u.username, role: u.role, name: u.name || u.username, phone: u.phone || null };
+  onLoginSuccess();
+}
+function sendOtpUnified(){
+  const phone = $('loginPhoneInput').value.trim();
+  if(!/^\d{10}$/.test(phone)) return toast('Enter 10-digit phone');
+  APP.otp = String(1000 + Math.floor(Math.random()*9000));
+  $('demoOtpUnified').innerText = APP.otp;
+  $('otpAreaUnified').classList.remove('hidden');
+  toast('OTP sent (demo)');
+}
+function hideOtpUnified(){ $('otpAreaUnified').classList.add('hidden'); APP.otp = null; }
+function verifyOtpUnified(){
+  const ent = $('otpInputUnified').value.trim();
+  const phone = $('loginPhoneInput').value.trim();
+  if(ent === APP.otp){
+    let users = getUsers();
+    let u = users.find(x=> x.username === phone);
+    if(!u){
+      u = { username: phone, password:'', role:'customer', name: phone, phone };
+      users.push(u); setUsers(users);
+    }
+    APP.user = { username: u.username, role: u.role, name: u.name || u.username, phone: u.phone || null };
+    hideOtpUnified();
+    onLoginSuccess();
+  } else toast('Invalid OTP');
+}
+function showRegister(){ $('registerSheet').classList.add('open'); }
+function closeRegister(){ $('registerSheet').classList.remove('open'); }
+function doRegister(){
+  const role = $('regRole').value;
+  const username = $('regUser').value.trim();
+  const pass = $('regPass').value;
+  const phone = $('regPhone').value.trim();
+  if(!username || !pass) return toast('Enter username & password');
+  let users = getUsers();
+  if(users.find(x=> x.username === username)) return toast('User exists');
+  if(role === 'admin') return toast('Cannot create admin from here');
+  const u = { username, password: pass, role, name: username, phone: /^\d{10}$/.test(phone) ? phone : undefined };
+  users.push(u); setUsers(users);
+  closeRegister();
+  toast('Account created — you can now login');
+}
+function logoutUnified(){ APP.user = null; showLoginScreen(); toast('Logged out'); }
+
+/* Post-login */
+function onLoginSuccess(){
+  $('loginScreen').style.display = 'none';
+  $('app').classList.remove('hidden');
+  $('appFooter').classList.remove('hidden');
+  updateHeaderApp();
+  renderMenuApp();
+  renderCartApp();
+  renderAdminIfNeeded();
+}
+
+/* Header & admin render */
+function updateHeaderApp(){
+  $('who').innerText = APP.user ? ${APP.user.name || APP.user.username} (${APP.user.role}) : 'Guest';
+  const gen = $('genQrApp');
+  if(gen) gen.src = generateQrForAmount( computeTotals(getCart()).total );
+}
+function renderAdminIfNeeded(){
+  if(APP.user && APP.user.role === 'admin'){
+    $('adminArea').classList.remove('hidden');
+    // Per request: admin should NOT see menu cards. So hide customerArea.
+    $('customerArea').classList.add('hidden');
+    $('appFooter').classList.remove('hidden');
+    renderAdminStats();
+  } else {
+    $('adminArea').classList.add('hidden');
+    $('customerArea').classList.remove('hidden');
+  }
+}
+function renderAdminStats(){
+  const h = getHistory();
+  const revenue = h.reduce((s,o)=> s + (o.totals? o.totals.total:0), 0);
+  const usersSet = new Set(h.map(o=>o.user));
+  $('adminStatsApp').innerText = Orders: ${h.length} • Unique users ordered: ${usersSet.size} • Revenue: ₹${revenue};
+}
+
+/* Menu rendering */
+function renderMenuApp(){
+  const grid = $('menuGridApp');
+  const q = $('searchApp').value.trim().toLowerCase();
+  const cat = $('catFilterApp').value;
+  const menu = getMenu();
+  if($('catFilterApp').options.length <= 1){
+    const cats = Array.from(new Set(menu.map(m=>m.category||'Misc')));
+    cats.forEach(c => { const opt = document.createElement('option'); opt.value = c; opt.innerText = c; $('catFilterApp').appendChild(opt); });
+  }
+  grid.innerHTML = '';
+  const filtered = menu.filter(it=>{
+    if(q && !(it.name.toLowerCase().includes(q) || (it.category||'').toLowerCase().includes(q))) return false;
+    if(cat && it.category !== cat) return false;
+    return true;
+  });
+  if(!filtered.length){ grid.innerHTML = <div class="muted small" style="grid-column:1/-1;text-align:center;padding:20px">No items</div>; return; }
+  filtered.forEach(item=>{
+    const div = document.createElement('div'); div.className='card';
+    div.style.padding='8px';
+    div.innerHTML = `<img src="${item.img}" alt="${item.name}" style="width:100%;height:110px;object-fit:cover;border-radius:8px"/>
+      <div style="margin-top:8px">
+        <div style="display:flex;justify-content:space-between"><strong>${escapeHtml(item.name)}</strong><span>₹${item.price}</span></div>
+        <div class="muted small">${escapeHtml(item.category)}</div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <input id="q_${item.id}" type="number" min="1" value="1" style="width:70px;padding:6px;border-radius:6px;border:1px solid #eee"/>
+          <button class="btn" onclick="openModifiersApp('${item.id}')">Choose & Add</button>
+        </div>
+      </div>`;
+    grid.appendChild(div);
+  });
+}
+
+/* Modifiers sheet & add */
+let CURRENT_ITEM = null;
+function openModifiersApp(id){
+  const item = getMenu().find(m=>m.id===id);
+  if(!item) return toast('Item not found');
+  const qty = parseInt($('q_'+id).value) || 1;
+  CURRENT_ITEM = item;
+  let html = <h3 style="margin:0">${escapeHtml(item.name)}</h3><div class="small muted">Base ₹${item.price}</div><hr/>;
+  if(item.modifiers.spice && item.modifiers.spice.length){
+    html += <label class="small">Spice</label><select id="m_spice_app">${item.modifiers.spice.map(s=><option>${escapeHtml(s)}</option>).join('')}</select><br/>;
+  } else html += <input type="hidden" id="m_spice_app" value="">;
+  if(item.modifiers.extras && item.modifiers.extras.length){
+    html += <div style="margin-top:8px"><strong>Extras</strong>${item.modifiers.extras.map((ex,idx)=><div><label><input type="checkbox" id="m_ex_app_${idx}" /> ${escapeHtml(ex.name)} (+₹${ex.price})</label></div>).join('')}</div>;
+  }
+  html += <div style="margin-top:8px"><label>Qty <input id="m_qty_app" type="number" value="${qty}" min="1" style="width:80px"/></label></div>;
+  html += <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end"><button class="btn secondary" onclick="closeSheet('manageSheet')">Cancel</button><button class="btn" onclick="confirmAddApp('${id}')">Add</button></div>;
+  showSheetWith('manageSheet', html);
+}
+function showSheetWith(id, html){ const s = $(id); s.innerHTML = html; s.classList.add('open'); window.scrollTo({top:0,behavior:'smooth'}); }
+function closeSheet(id){ const s = $(id); s.classList.remove('open'); s.innerHTML = ''; }
+
+/* confirm add */
+function confirmAddApp(id){
+  const item = getMenu().find(m=>m.id===id);
+  const qty = parseInt($('m_qty_app').value) || 1;
+  const spice = $('m_spice_app') ? $('m_spice_app').value : '';
+  const extras = [];
+  (item.modifiers.extras||[]).forEach((ex,i)=>{ const cb = $('m_ex_app_'+i); if(cb && cb.checked) extras.push({ name: ex.name, price: ex.price }); });
+  const cart = getCart();
+  // match by id + mods
+  const found = cart.find(c => c.id===id && JSON.stringify(c.mods)===JSON.stringify({spice,extras}));
+  if(found) found.qty += qty; else cart.push({ id:item.id, name:item.name, price:item.price, qty, img:item.img, mods:{spice, extras} });
+  setCart(cart);
+  closeSheet('manageSheet');
+  toast('Added to cart');
+}
+
+/* CART / totals / GST */
+function computeTotals(cart){
+  const settings = getSettings();
+  const GST = settings.gst || DEFAULT_GST;
+  let subtotal = 0, offerDiscount=0;
+  cart.forEach(it=>{
+    const extras = (it.mods.extras||[]).reduce((s,e)=>s+e.price,0);
+    subtotal += (it.price + extras) * it.qty;
+    const free = Math.floor(it.qty/3);
+    offerDiscount += free * it.price;
+  });
+  const afterOffer = subtotal - offerDiscount;
+  let orderDiscount = 0;
+  if(afterOffer >= 500) orderDiscount = Math.round(afterOffer * 0.10);
+  let couponDiscount = 0;
+  if(appliedCoupon){
+    const c = appliedCoupon.toUpperCase();
+    if(c==='NEW50') couponDiscount = Math.round(Math.min(afterOffer*0.5,100));
+    if(c==='FESTIVE10') couponDiscount = Math.round(afterOffer*0.10);
+  }
+  const taxable = Math.max(0, afterOffer - orderDiscount - couponDiscount);
+  const gst = Math.round(taxable * (GST/100));
+  const total = taxable + gst;
+  return { subtotal, offerDiscount, orderDiscount, couponDiscount, gst, total };
+}
+
+function renderCartApp(){
+  const cart = getCart();
+  const body = $('cartBodyApp');
+  if(!body) return;
+  body.innerHTML = '';
+  if(cart.length===0){ body.innerHTML = '<tr><td colspan="4" class="muted">Cart empty</td></tr>'; }
+  else{
+    cart.forEach((it, idx)=>{
+      const extras = (it.mods.extras||[]).map(e=>e.name).join(', ');
+      const extrasPrice = (it.mods.extras||[]).reduce((s,e)=>s+e.price,0);
+      const line = (it.price + extrasPrice) * it.qty;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td><strong>${escapeHtml(it.name)}</strong><div class="muted small">${it.mods.spice? 'Spice: '+escapeHtml(it.mods.spice) : ''}${extras? ' • Extras: '+escapeHtml(extras) : ''}</div></td>
+        <td><div style="display:flex;gap:6px;align-items:center"><button class="btn secondary" onclick="changeQtyApp(${idx},-1)">-</button><input type="number" value="${it.qty}" min="0" onchange="changeQtyApp(${idx}, this.value, true)" style="width:60px;padding:6px;border-radius:6px;border:1px solid #eee"/></div></td>
+        <td class="right">₹${line}</td><td class="right"><button class="btn secondary" onclick="removeItemApp(${idx})">Remove</button></td>`;
+      body.appendChild(tr);
+    });
+  }
+  const totals = computeTotals(cart);
+  $('priceBoxApp').innerHTML = Subtotal: ₹${totals.subtotal}<br/>3-for-2: -₹${totals.offerDiscount}<br/>Order disc: -₹${totals.orderDiscount}<br/>Coupon: -₹${totals.couponDiscount}<br/>GST: ₹${totals.gst}<br/><strong>Total: ₹${totals.total}</strong>;
+  if(cart.length>0){
+    const token = localStorage.getItem('ck_current_token') || incrementToken();
+    const eta = estimateETA(cart);
+    $('tokenApp').innerText = token;
+    $('etaApp').innerText = eta;
+  } else {
+    $('tokenApp').innerText = '—';
+    $('etaApp').innerText = '—';
+  }
+  updateQRApp();
+  updateHeaderApp();
+}
+function changeQtyApp(idx, deltaOrValue, absolute=false){
+  const cart = getCart();
+  if(!cart[idx]) return;
+  if(absolute) cart[idx].qty = parseInt(deltaOrValue)||0; else cart[idx].qty = Math.max(0, cart[idx].qty + deltaOrValue);
+  if(cart[idx].qty === 0) cart.splice(idx,1);
+  setCart(cart);
+}
+function removeItemApp(idx){ const cart = getCart(); cart.splice(idx,1); setCart(cart); }
+function clearCartApp(){ if(!confirm('Clear cart?')) return; setCart([]); appliedCoupon=null; toast('Cart cleared'); }
+
+/* coupons */
+function applyCouponApp(){ const code = $('couponApp').value.trim(); if(!code) return toast('Enter coupon'); const c = code.toUpperCase(); if(['NEW50','FESTIVE10'].includes(c)){ appliedCoupon=c; toast('Coupon applied'); renderCartApp(); } else toast('Invalid coupon'); }
+
+/* UPI / QR / Scanner */
+function buildUpiApp(amount){
+  const s = getSettings(); const pa = encodeURIComponent(s.upi || DEFAULT_UPI); const pn = encodeURIComponent(s.merchant || "Candy's Kitchen"); const tn = encodeURIComponent('Candy Kitchen Payment'); let upi = upi://pay?pa=${pa}&pn=${pn}&tn=${tn}&cu=INR; if(amount) upi += &am=${encodeURIComponent(String(amount))}; return upi;
+}
+function generateQrForAmount(amount){
+  const upi = buildUpiApp(amount);
+  const payload = encodeURIComponent(upi);
+  return https://chart.googleapis.com/chart?cht=qr&chl=${payload}&chs=400x400&chld=L|1;
+}
+function updateQRApp(){ const gen = $('genQrApp'); const uploaded = $('uploadedQrApp'); const amt = computeTotals(getCart()).total; if(gen) gen.src = generateQrForAmount(amt); if(uploaded && uploaded.src){ uploaded.style.display='block'; if(gen) gen.style.display='none'; } else { if(gen) gen.style.display='block'; if(uploaded) uploaded.style.display='none'; } }
+function openUpiAppApp(){ const tot = computeTotals(getCart()).total; if(tot<=0) return toast('Cart ₹0'); const upi = buildUpiApp(tot); window.location.href = upi; setTimeout(()=>window.open(upi,'_blank'),500); }
+function copyUpiApp(){ navigator.clipboard.writeText(getSettings().upi||DEFAULT_UPI).then(()=>toast('UPI copied')); }
+function onQrUploadApp(e){
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader(); r.onload = ev=>{ $('uploadedQrApp').src = ev.target.result; $('uploadedQrApp').style.display='block'; const gen = $('genQrApp'); if(gen) gen.style.display='none'; toast('Using uploaded QR (scanner)'); }; r.readAsDataURL(f);
+}
+function applyExactPayApp(){ $('qrUploaderApp').click(); }
+
+/* Checkout / history / PDF */
+function saveOrderApp(){
+  const cart = getCart(); if(cart.length===0) return toast('Cart empty');
+  const name = $('custNameApp').value.trim() || (APP.user? APP.user.name : 'Guest');
+  const table = $('tableNoApp').value.trim() || 'NA';
+  const totals = computeTotals(cart);
+  const snap = { id:'ORD'+Date.now(), user: APP.user? APP.user.username:'guest', name, table, time: now(), items: JSON.parse(JSON.stringify(cart)), totals, token: localStorage.getItem('ck_current_token')||incrementToken(), status:'Pending' };
+  const h = getHistory(); h.unshift(snap); setHistory(h);
+  toast('Order saved');
+}
+
+function checkoutUnified(mode){
+  const cart = getCart(); if(cart.length===0) return toast('Cart empty');
+  if(!confirm('Proceed to finalize order?')) return;
+  const name = $('custNameApp').value.trim() || (APP.user? APP.user.name : 'Guest');
+  const table = $('tableNoApp').value.trim() || 'NA';
+  const totals = computeTotals(cart);
+  const snap = { id:'ORD'+Date.now(), user: APP.user? APP.user.username:'guest', name, table, time: now(), items: JSON.parse(JSON.stringify(cart)), totals, token: localStorage.getItem('ck_current_token')||incrementToken(), status:'Preparing', paid:true, paymentMode: mode };
+  const h = getHistory(); h.unshift(snap); setHistory(h);
+  setCart([]); appliedCoupon=null;
+  toast('Order placed. Token: '+snap.token);
+  setTimeout(()=>toast('Customer notified (simulated)'));
+}
+
+/* PDF generation */
+async function downloadPDFApp(){
+  const cart = getCart(); if(cart.length===0) return toast('Cart empty');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'pt', format:'a4' });
+  let y=40; doc.setFontSize(16); doc.text("Candy's Kitchen — Bill", 40, y); y+=18;
+  const name = $('custNameApp').value || (APP.user? APP.user.name : 'Guest');
+  const table = $('tableNoApp').value || 'NA';
+  doc.setFontSize(10); doc.text(Customer: ${name}, 40, y); doc.text(Table: ${table}, 350, y); y+=12;
+  doc.text(Time: ${now()}, 40, y); y+=12;
+  doc.text('Item', 40, y); doc.text('Qty', 320, y); doc.text('Line', 380, y); y+=10;
+  cart.forEach(it=>{
+    const extras = (it.mods.extras||[]).length ? ' (' + it.mods.extras.map(e=>e.name).join(',') + ')' : '';
+    doc.text(${it.name}${extras}, 40, y);
+    doc.text(String(it.qty), 320, y);
+    const line = (it.price + (it.mods.extras||[]).reduce((s,e)=>s+e.price,0)) * it.qty;
+    doc.text('₹'+line, 380, y); y+=12;
+    if(y>720){ doc.addPage(); y=40; }
+  });
+  const totals = computeTotals(cart);
+  y+=8; doc.text(Subtotal: ₹${totals.subtotal}, 40, y); y+=12;
+  doc.text(3-for-2: -₹${totals.offerDiscount}, 40, y); y+=12;
+  doc.text(Order disc: -₹${totals.orderDiscount}, 40, y); y+=12;
+  if(totals.couponDiscount>0){ doc.text(Coupon: -₹${totals.couponDiscount}, 40, y); y+=12; }
+  doc.text(GST: ₹${totals.gst}, 40, y); y+=16;
+  doc.setFontSize(12); doc.text(Total: ₹${totals.total}, 40, y); y+=22;
+  try{
+    const gen = $('genQrApp'); const uploaded = $('uploadedQrApp'); let src = '';
+    if(uploaded && uploaded.src) src = uploaded.src; else if(gen && gen.src) src = gen.src;
+    if(src){
+      const data = await toDataUrl(src);
+      doc.addImage(data, 'PNG', 400, y-40, 140, 140);
+    }
+  }catch(e){ console.warn('QR embed fail', e); }
+  doc.save('bill_'+Date.now()+'.pdf');
+}
+async function toDataUrl(src){
+  if(!src) return '';
+  if(src.startsWith('data:')) return src;
+  try{ const r = await fetch(src); const b = await r.blob(); return await new Promise((res,rej)=>{ const rd = new FileReader(); rd.onloadend=()=>res(rd.result); rd.onerror=rej; rd.readAsDataURL(b); }); }catch(e){ console.warn(e); return ''; }
+}
+
+/* WhatsApp share */
+function sendWhatsAppApp(){
+  const cart = getCart(); if(cart.length===0) return toast('Cart empty');
+  let number = prompt('Enter customer WhatsApp number with country code (e.g., 919876543210). Leave blank to use merchant');
+  if(!number) number = getSettings().upi || DEFAULT_UPI;
+  const name = $('custNameApp').value || (APP.user? APP.user.name : 'Guest');
+  const table = $('tableNoApp').value || 'NA';
+  const totals = computeTotals(cart);
+  let msg = 🍴 Candy's Kitchen Bill 🍴\nCustomer: ${name}\nTable: ${table}\n\n;
+  cart.forEach(it=>{ msg += • ${it.name} x${it.qty} = ₹${(it.price + (it.mods.extras||[]).reduce((s,e)=>s+e.price,0))*it.qty}\n; });
+  msg += \nTotal: ₹${totals.total}\nPay via UPI: ${getSettings().upi||DEFAULT_UPI}\n;
+  const enc = encodeURIComponent(msg);
+  const url = https://wa.me/${number.replace(/\D/g,'')}?text=${enc};
+  window.open(url,'_blank');
+}
+
+/* Order history & export */
+function renderHistoryApp(){
+  const h = getHistory();
+  const user = APP.user;
+  const filtered = (user && user.role==='customer') ? h.filter(o => o.user === user.username) : h;
+  if(filtered.length===0) toast('No orders yet');
+  else{
+    const top = filtered.slice(0,8).map(o => ${o.id} • ₹${o.totals.total} • ${o.status}).join('\n');
+    alert('Recent orders:\n' + top);
+  }
+}
+function exportAllHistoryApp(){
+  const h = getHistory(); if(h.length===0) return toast('No orders');
+  const rows = [['id','time','name','table','total','token','status','items']];
+  h.forEach(o => rows.push([o.id,o.time,o.name,o.table,o.totals.total,o.token,o.status,o.items.map(i=>i.name+' x'+i.qty).join('|')]));
+  const csv = rows.map(r=> r.map(c=> "${String(c).replace(/"/g,'""')}").join(',') ).join('\n');
+  const blob = new Blob([csv],{type:'text/csv'}); const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'orders_'+Date.now()+'.csv'; a.click(); URL.revokeObjectURL(url);
+}
+
+/* ---------- Admin: Update Menu / Orders / Change Password ---------- */
+
+/* Admin Menu Editor (sheet) */
+function openAdminMenuEditor(){
+  if(!APP.user || APP.user.role !== 'admin') return toast('Admin only');
+  const el = getMenu();
+  let html = `<div style="display:flex;justify-content:space-between;align-items:center"><h3>Update Menu</h3><button class="btn secondary" onclick="closeSheet('manageSheet')">Close</button></div>
+    <div style="margin-top:8px">
+      <input id="mm_name_app" placeholder="Name"/><input id="mm_price_app" placeholder="Price" style="margin-top:8px"/><input id="mm_img_app" placeholder="Image URL" style="margin-top:8px"/><input id="mm_cat_app" placeholder="Category" style="margin-top:8px"/><input id="mm_extras_app" placeholder="Extras name:price comma-separated" style="margin-top:8px"/>
+      <div style="display:flex;gap:8px;margin-top:8px"><button class="btn" onclick="addMenuItemAdminApp()">Add Item</button> <button class="btn secondary" onclick="closeSheet('manageSheet')">Close</button></div>
+    </div><hr/>`;
+  html += el.map((m,idx)=><div style="padding:6px;border-bottom:1px dashed #eee"><strong>${escapeHtml(m.name)}</strong> • ₹${m.price} • ${escapeHtml(m.category)} <div style="margin-top:6px"><button class="btn" onclick="editMenuApp(${idx})">Edit</button> <button class="btn secondary" onclick="deleteMenuApp('${m.id}')">Delete</button></div></div>).join('');
+  showSheetWith('manageSheet', html);
+}
+
+/* Admin Orders (sheet) */
+function openAdminOrders(){
+  if(!APP.user || APP.user.role !== 'admin') return toast('Admin only');
+  const h = getHistory();
+  let html = <div style="display:flex;justify-content:space-between;align-items:center"><h3>Order History</h3><button class="btn secondary" onclick="closeSheet('manageSheet')">Close</button></div><div style="margin-top:8px">;
+  if(h.length===0) html += '<div class="muted">No orders</div>';
+  else html += h.map(o=><div style="padding:6px;border-bottom:1px dashed #eee"><strong>${o.id}</strong> • ${escapeHtml(o.name)} • ₹${o.totals.total} • ${o.status}<div style="margin-top:6px"><button class="btn" onclick="updateOrderStatusApp('${o.id}','Preparing')">Preparing</button> <button class="btn" onclick="updateOrderStatusApp('${o.id}','Ready')">Ready</button> <button class="btn" onclick="updateOrderStatusApp('${o.id}','Completed')">Completed</button> <button class="btn secondary" onclick="deleteOrderApp('${o.id}')">Delete</button></div></div>).join('');
+  html += '</div>';
+  showSheetWith('manageSheet', html);
+}
+
+/* Change password sheet */
+function openChangePassword(){
+  if(!APP.user) return toast('No user');
+  const html = `<div style="display:flex;justify-content:space-between;align-items:center"><h3>Change Password</h3><button class="btn secondary" onclick="closeSheet('manageSheet')">Close</button></div>
+  <div style="margin-top:8px">
+    <label class="small">Current password</label>
+    <input id="cp_curr" type="password" />
+    <label class="small">New password</label>
+    <input id="cp_new" type="password" />
+    <label class="small">Confirm new</label>
+    <input id="cp_confirm" type="password" />
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="btn" onclick="changePasswordAdmin()">Save</button><button class="btn secondary" onclick="closeSheet('manageSheet')">Cancel</button></div>
+  </div>`;
+  showSheetWith('manageSheet', html);
+}
+
+/* Change password logic */
+function changePasswordAdmin(){
+  if(!APP.user) return toast('No user');
+  const curr = $('cp_curr').value || '';
+  const nw = $('cp_new').value || '';
+  const cf = $('cp_confirm').value || '';
+  if(!curr || !nw || !cf) return toast('Fill all fields');
+  if(nw !== cf) return toast('New passwords do not match');
+  const users = getUsers();
+  const uidx = users.findIndex(x=> x.username === APP.user.username);
+  if(uidx === -1) return toast('User not found');
+  if(users[uidx].password !== curr) return toast('Current password incorrect');
+  users[uidx].password = nw;
+  setUsers(users);
+  toast('Password updated');
+  closeSheet('manageSheet');
+}
+
+/* Manage Menu helpers */
+function addMenuItemAdminApp(){
+  if(!APP.user || APP.user.role !== 'admin') return toast('Admin only');
+  const name = $('mm_name_app').value.trim(); const price = parseInt($('mm_price_app').value,10)||0; const img = $('mm_img_app').value.trim() || 'https://via.placeholder.com/300x200'; const cat = $('mm_cat_app').value.trim() || 'Misc'; const extrasRaw = $('mm_extras_app').value.trim();
+  const extras = extrasRaw ? extrasRaw.split(',').map(s=>{ const [n,p]=s.split(':').map(x=>x.trim()); return { name:n, price: parseInt(p||'0',10)||0 }; }) : [];
+  if(!name) return toast('Enter name');
+  const menu = getMenu(); const id = name.toLowerCase().replace(/\s+/g,'') + '' + Date.now();
+  menu.push({ id, name, price, img, category:cat, modifiers:{spice:['Normal','Mild','Hot'], extras} });
+  setMenu(menu);
+  toast('Added menu item');
+  openAdminMenuEditor();
+}
+function editMenuApp(idx){
+  if(!APP.user || APP.user.role !== 'admin') return toast('Admin only');
+  const menu = getMenu(); const m = menu[idx];
+  const name = prompt('Name', m.name); if(!name) return; const price = parseInt(prompt('Price', m.price),10)||m.price; m.name = name; m.price = price; setMenu(menu); openAdminMenuEditor();
+}
+function deleteMenuApp(id){ if(!confirm('Delete item?')) return; let menu = getMenu(); menu = menu.filter(m=>m.id!==id); setMenu(menu); openAdminMenuEditor(); toast('Deleted'); }
+
+/* Update order helpers */
+function updateOrderStatusApp(id, status){ const h = getHistory(); const o = h.find(x=>x.id===id); if(!o) return toast('Not found'); o.status = status; setHistory(h); toast('Order '+id+' → '+status); openAdminOrders(); if(status==='Ready') setTimeout(()=>toast('WhatsApp simulated: order ready'),600); }
+function deleteOrderApp(id){ if(!confirm('Delete?')) return; let h = getHistory(); h = h.filter(x=>x.id!==id); setHistory(h); openAdminOrders(); toast('Deleted'); }
+
+/* Utility */
+function incrementToken(){ let c = parseInt(localStorage.getItem('ck_token_counter')||'1000',10); c++; localStorage.setItem('ck_token_counter', String(c)); localStorage.setItem('ck_current_token','T'+c); return 'T'+c; }
+function estimateETA(cart){ const unique = cart.length; const qtySum = cart.reduce((s,i)=>s+i.qty,0); const extrasComplexity = cart.reduce((s,i)=>s + (i.mods.extras? i.mods.extras.length:0), 0); let eta = 8 + (unique*2) + qtySum * 1 + extrasComplexity * 1; if(eta < 8) eta = 8; return Math.round(eta); }
+function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+/* Nav helpers */
+function navToCart(){ window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }
+function showOrdersApp(){ renderHistoryApp(); }
+
+/* Expose minimal functions to inline handlers */
+window.doLoginUP = doLoginUP;
+window.sendOtpUnified = sendOtpUnified;
+window.verifyOtpUnified = verifyOtpUnified;
+window.selectLoginTab = selectLoginTab;
+window.showRegister = showRegister;
+window.closeRegister = closeRegister;
+window.doRegister = doRegister;
+window.logoutUnified = logoutUnified;
+window.renderMenuApp = renderMenuApp;
+window.openModifiersApp = openModifiersApp;
+window.confirmAddApp = confirmAddApp;
+window.changeQtyApp = changeQtyApp;
+window.removeItemApp = removeItemApp;
+window.clearCartApp = clearCartApp;
+window.applyCouponApp = applyCouponApp;
+window.applyExactPayApp = applyExactPayApp;
+window.onQrUploadApp = onQrUploadApp;
+window.copyUpiApp = copyUpiApp;
+window.openUpiAppApp = openUpiAppApp;
+window.checkoutUnified = checkoutUnified;
+window.downloadPDFApp = downloadPDFApp;
+window.exportAllHistoryApp = exportAllHistoryApp;
+window.openAdminMenuEditor = openAdminMenuEditor;
+window.openAdminOrders = openAdminOrders;
+window.openChangePassword = openChangePassword;
+window.addMenuItemAdminApp = addMenuItemAdminApp;
+window.incrementToken = incrementToken;
+window.saveOrderApp = saveOrderApp;
+window.showOrdersApp = showOrdersApp;
+
+/* Initial render */
+updateHeaderApp();
+renderMenuApp();
+renderCartApp();
+renderAdminIfNeeded();
+
+</script>
+</body>
+</html>
